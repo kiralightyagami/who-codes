@@ -1,6 +1,11 @@
-import type { KeyBinding } from "@opentui/core";
+import { TextareaRenderable, type KeyBinding } from "@opentui/core";
 import { EmptyBorder } from "./border";
 import { StatusBar } from "./status-bar";
+import { CommandMenu } from "./commands-menu";
+import { useRef, useCallback, useEffect } from "react";
+import { useRenderer } from "@opentui/react";
+import type { Command } from "./commands-menu/types";
+import { useCommand } from "./commands-menu/use-command";
 
 export const INPUT_KEY_BINDINGS: KeyBinding[] = [
   { name: "return", action: "submit" },
@@ -13,9 +18,87 @@ export const Input = ({
   onSubmit,
   disabled = false,
 }: {
-  onSubmit?: (text: string) => void;
+  onSubmit: (text: string) => void;
   disabled?: boolean;
 }) => {
+  const textareaRef = useRef<TextareaRenderable>(null);
+  const onSubmitRef = useRef<() => void>(() => {});
+  const renderer = useRenderer();
+
+  const {
+    showCommandMenu,
+    selectedIndex,
+    scrollRef,
+    commandQuery,
+    handleContentChange,
+    resolveCommand,
+    setSelectedIndex,
+  } = useCommand();
+
+  const handleContentExecute = useCallback((index: number) => {
+    const command = resolveCommand(index);
+    handleCommand(command);
+  }, []);
+
+  const handleTextareaContentChange = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    handleContentChange(textarea.plainText);
+  }, []);
+
+  const handleSubmit = useCallback(() => {
+    if (disabled) return;
+
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const text = textarea.plainText.trim();
+    if (text.length === 0) return;
+
+    onSubmit(text);
+    textarea.setText("");
+  }, [disabled, onSubmit]);
+
+  const handleCommand = useCallback(
+    (command: Command | undefined) => {
+      const textarea = textareaRef.current;
+      if (!textarea || !command) return;
+
+      textarea.setText("");
+
+      if (command.action) {
+        command.action({
+          exit: () => renderer.destroy(),
+        });
+      } else {
+        textarea.insertText(command.value + " ");
+      }
+    },
+    [renderer],
+  );
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.onSubmit = () => {
+      onSubmitRef.current();
+    };
+  }, []);
+
+  onSubmitRef.current = () => {
+    if (disabled) return;
+
+    if (showCommandMenu) {
+      const command = resolveCommand(selectedIndex);
+      handleCommand(command);
+      return;
+    }
+
+    handleSubmit();
+  };
+
   return (
     <box width={"100%"} alignItems="center">
       <box
@@ -37,10 +120,30 @@ export const Input = ({
           width={"100%"}
           gap={1}
         >
+          {showCommandMenu && (
+            <box
+              position="absolute"
+              bottom={"100%"}
+              left={0}
+              width={"100%"}
+              backgroundColor={"#1A1A24"}
+              zIndex={10}
+            >
+              <CommandMenu
+                query={commandQuery}
+                selectedIndex={selectedIndex}
+                scrollRef={scrollRef}
+                onSelect={setSelectedIndex}
+                onExecute={handleContentExecute}
+              />
+            </box>
+          )}
           <textarea
+            ref={textareaRef}
             focused={!disabled}
             keyBindings={INPUT_KEY_BINDINGS}
             placeholder={`Cook anything... "Create GTA-VII make no mistake"`}
+            onContentChange={handleTextareaContentChange}
           />
           <StatusBar />
         </box>
