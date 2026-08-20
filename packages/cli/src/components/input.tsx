@@ -35,11 +35,6 @@ export const Input = ({
     setSelectedIndex,
   } = useCommand();
 
-  const handleContentExecute = useCallback((index: number) => {
-    const command = resolveCommand(index);
-    handleCommand(command);
-  }, []);
-
   const handleTextareaContentChange = useCallback(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -76,6 +71,14 @@ export const Input = ({
       }
     },
     [renderer],
+  );
+
+  const handleContentExecute = useCallback(
+    (index: number) => {
+      const command = resolveCommand(index);
+      handleCommand(command);
+    },
+    [handleCommand, resolveCommand],
   );
 
   useEffect(() => {

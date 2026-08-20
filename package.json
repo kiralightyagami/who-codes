@@ -3,6 +3,10 @@
     "version": "1.0.0",
     "workspaces": ["packages/*"],
     "scripts": {
-      "dev:cli": "bun run --watch packages/cli/src/index.tsx"
+        "dev:cli": "bun run --watch packages/cli/src/index.tsx"
+    },
+    "dependencies": {
+        "@google/genai": "^2.18.0",
+        "dotenv": "^17.4.2"
     }
-  }
+}
