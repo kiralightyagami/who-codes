@@ -10,10 +10,12 @@ export type MessageRole = "user" | "assistant" | "tool";
 export interface ChatMessage {
   id: string;
   role: MessageRole;
-  /** Displayed text content. */
+  /** Displayed text content. For tool calls, encoded as "__tool_call__:" + JSON. */
   content: string;
   /** For tool messages — which tool this came from. */
   toolName?: string;
+  /** Links assistant tool calls to their results. */
+  toolCallId?: string;
   /** Timestamp for ordering/display. */
   timestamp: number;
 }

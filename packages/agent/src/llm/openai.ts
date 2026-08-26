@@ -8,8 +8,8 @@ import type {
 
 /**
  * OpenAI-compatible provider implemented with raw fetch so we don't need
- * to add the `openai` npm package. Works with OpenAI, and any OpenAI-compatible
- * endpoint (e.g. Ollama, Together, etc.).
+ * to add the `openai` npm package. Works with OpenAI, OpenRouter, and
+ * any OpenAI-compatible endpoint.
  */
 
 const OPENAI_BASE = "https://api.openai.com/v1";
@@ -71,24 +71,23 @@ export class OpenAIProvider implements LlmProvider {
           tool_call_id: msg.toolCallId!,
         });
       } else if (msg.role === "assistant" && msg.toolName && msg.toolCallId) {
-        // Assistant message carrying a tool call
+        const argsStr = msg.content && msg.content.startsWith("__tool_call__:")
+          ? msg.content.slice("__tool_call__:".length)
+          : msg.content ?? "{}";
         result.push({
           role: "assistant",
-          content: msg.content || null,
+          content: null,
           tool_calls: [
             {
               id: msg.toolCallId,
               type: "function",
-              function: {
-                name: msg.toolName,
-                arguments: JSON.stringify(msg.content ? JSON.parse(msg.content) : {}),
-              },
+              function: { name: msg.toolName, arguments: argsStr },
             },
           ],
         });
       } else {
         result.push({
-          role: msg.role,
+          role: msg.role === "assistant" ? "assistant" : msg.role,
           content: msg.content,
         });
       }
@@ -118,6 +117,7 @@ export class OpenAIProvider implements LlmProvider {
       messages: this.toOaiMessages(messages),
       stream: true,
       stream_options: { include_usage: false },
+      max_tokens: 2048,
     };
 
     if (tools.length > 0) {
@@ -147,83 +147,85 @@ export class OpenAIProvider implements LlmProvider {
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
 
-    const done = Symbol("done");
+    // Accumulate tool calls across streaming chunks, keyed by index.
+    const toolCallAccum: Map<number, { id: string; name: string; args: string }> =
+      new Map();
 
     try {
       while (true) {
         const { value, done: isDone } = await reader.read();
-        if (isDone) {
-          // Process any remaining buffer
-          if (buffer.trim()) {
-            const chunk = this.parseSseLine(buffer);
-            if (chunk) yield chunk;
-          }
-          break;
-        }
+        if (isDone) break;
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Process complete SSE lines (each starts with "data: ")
+        // Process complete SSE lines
         while (buffer.includes("\n")) {
-          const newlineIdx = buffer.indexOf("\n");
-          const line = buffer.slice(0, newlineIdx).trim();
-          buffer = buffer.slice(newlineIdx + 1);
+          const nlIdx = buffer.indexOf("\n");
+          const line = buffer.slice(0, nlIdx).trim();
+          buffer = buffer.slice(nlIdx + 1);
 
-          if (line.startsWith("data: ") && line !== "data: [DONE]") {
-            const jsonStr = line.slice(6);
-            const chunk = this.parseSseLine(jsonStr);
-            if (chunk) yield chunk;
+          if (!line.startsWith("data:") || line === "data: [DONE]") continue;
+
+          const jsonStr = line.slice(6).trim();
+          let data: any;
+          try {
+            data = JSON.parse(jsonStr);
+          } catch {
+            continue;
+          }
+
+          // --- Text delta (yield immediately) ---
+          const textContent = data.choices?.[0]?.delta?.content;
+          if (textContent) {
+            yield { type: "text", text: textContent };
+          }
+
+          // --- Tool call deltas (accumulate) ---
+          const delta = data.choices?.[0]?.delta;
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0;
+              let acc = toolCallAccum.get(idx);
+              if (!acc) {
+                acc = {
+                  id: tc.id ?? `tc-${Date.now()}-${idx}`,
+                  name: "",
+                  args: "",
+                };
+                toolCallAccum.set(idx, acc);
+              }
+              if (tc.id) acc.id = tc.id;
+              if (tc.function?.name) acc.name = tc.function.name;
+              if (tc.function?.arguments) acc.args += tc.function.arguments;
+            }
+          }
+
+          // --- Finish reason — flush accumulated tool calls ---
+          const finishReason = data.choices?.[0]?.finish_reason;
+          if (finishReason === "tool_calls") {
+            for (const [, acc] of toolCallAccum) {
+              let args: Record<string, unknown> = {};
+              if (acc.args) {
+                try {
+                  args = JSON.parse(acc.args);
+                } catch {
+                  args = { _raw: acc.args };
+                }
+              }
+              yield {
+                type: "tool_call",
+                id: acc.id,
+                name: acc.name,
+                args,
+              };
+            }
+            toolCallAccum.clear();
           }
         }
       }
     } finally {
       reader.releaseLock?.();
     }
-  }
-
-  /** Parse a single JSON SSE data payload into our chunk type. */
-  private parseSseLine(jsonStr: string): LlmResponseChunk | null {
-    let data: any;
-    try {
-      data = JSON.parse(jsonStr);
-    } catch {
-      return null;
-    }
-
-    // Text delta from a regular content part
-    if (data.choices?.[0]?.delta?.content) {
-      return { type: "text", text: data.choices[0].delta.content };
-    }
-
-    // Tool call delta
-    const delta = data.choices?.[0]?.delta;
-    if (delta?.tool_calls) {
-      for (const tc of delta.tool_calls) {
-        if (tc.function?.name) {
-          // First chunk of a tool call — has the name and an id
-          return {
-            type: "tool_call",
-            id: tc.id ?? `tc-${Date.now()}`,
-            name: tc.function.name,
-            args: tc.function.arguments
-              ? JSON.parse(tc.function.arguments)
-              : {},
-          };
-        }
-        if (tc.function?.arguments) {
-          // Continuation — we yield as a text-like chunk for args
-          // (The agent loop will assemble these.)
-          return {
-            type: "tool_call",
-            id: tc.id ?? `tc-${Date.now()}`,
-            name: "",
-            args: JSON.parse(tc.function.arguments),
-          };
-        }
-      }
-    }
-
-    return null;
   }
 }
 
