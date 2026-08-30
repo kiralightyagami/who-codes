@@ -148,8 +148,10 @@ export class OpenAIProvider implements LlmProvider {
     let buffer = "";
 
     // Accumulate tool calls across streaming chunks, keyed by index.
-    const toolCallAccum: Map<number, { id: string; name: string; args: string }> =
-      new Map();
+    const toolCallAccum: Map<
+      number,
+      { id: string; name: string; args: string; argsComplete: boolean }
+    > = new Map();
 
     try {
       while (true) {
@@ -191,12 +193,27 @@ export class OpenAIProvider implements LlmProvider {
                   id: tc.id ?? `tc-${Date.now()}-${idx}`,
                   name: "",
                   args: "",
+                  argsComplete: false,
                 };
                 toolCallAccum.set(idx, acc);
               }
               if (tc.id) acc.id = tc.id;
               if (tc.function?.name) acc.name = tc.function.name;
-              if (tc.function?.arguments) acc.args += tc.function.arguments;
+
+              // Accumulate args — but check if we already have complete JSON
+              // (some providers like OpenRouter send the full args string
+              // in each chunk instead of as incremental deltas).
+              if (tc.function?.arguments && !acc.argsComplete) {
+                acc.args += tc.function.arguments;
+                // If the accumulated args are now valid JSON, we're done
+                // for this tool call — won't append more.
+                try {
+                  JSON.parse(acc.args);
+                  acc.argsComplete = true;
+                } catch {
+                  // Not yet valid JSON — wait for more chunks
+                }
+              }
             }
           }
 

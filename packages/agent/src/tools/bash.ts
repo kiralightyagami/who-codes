@@ -28,18 +28,22 @@ export const bashTool: Tool = {
       stderr: "pipe",
     });
 
-
+    // Kill after timeout
     const timer = setTimeout(() => {
       proc.kill();
     }, timeout * 1000);
 
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    // Wait for process to fully exit
+    const exitCode = await proc.exited;
     clearTimeout(timer);
 
+    const stdout = await new Response(proc.stdout).text();
+    const stderr = await new Response(proc.stderr).text();
+
     const output = stdout + (stderr ? `\n${stderr}` : "");
-    if (proc.exitCode !== 0) {
-      return `Error (exit ${proc.exitCode}): ${output || "command failed"}`;
+
+    if (exitCode !== 0) {
+      return `Error (exit ${exitCode}): ${output || "command failed"}`;
     }
 
     return output || "(no output)";
