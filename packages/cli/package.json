@@ -17,6 +17,7 @@
     "@opentui/core": "^0.4.5",
     "@opentui/react": "^0.4.5",
     "react": "^19.2.6",
-    "@who-codes/agent": "workspace:*"
+    "@who-codes/agent": "workspace:*",
+    "dotenv": "^17.4.2"
   }
 }
