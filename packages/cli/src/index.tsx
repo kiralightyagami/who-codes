@@ -10,6 +10,7 @@ import type { ChatMessage, ConversationEvent } from "../../agent/src";
 import { useState, useEffect, useRef } from "react";
 
 
+
 dotenv.config({ path: "../agent/.env" });
 
 const renderer = await createCliRenderer();
@@ -32,17 +33,59 @@ function App() {
 
   const agent = agentRef.current!;
 
-  // Subscribe to conversation events
   useEffect(() => {
     const unsubscribe = agent.conversation.subscribe((event: ConversationEvent) => {
-      if (event.type === "message_added") {
-        setMessages((prev) => [...prev, event.message]);
-      }
-      if (event.type === "agent_start") {
-        setIsAgentRunning(true);
-      }
-      if (event.type === "agent_end") {
-        setIsAgentRunning(false);
+      switch (event.type) {
+        case "message_added":
+          setMessages((prev) => [...prev, event.message]);
+          break;
+
+        case "text_delta":
+          // Append streaming text to the last assistant message
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (!last || last.role !== "assistant") return prev;
+            const updated: ChatMessage = {
+              ...last,
+              content: last.content + event.text,
+            };
+            return [...prev.slice(0, -1), updated];
+          });
+          break;
+
+        case "tool_call_started":
+          // Add a tool message to show the tool is being called
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: event.call.id,
+              role: "tool",
+              content: "",
+              toolName: event.call.name,
+              timestamp: Date.now(),
+            },
+          ]);
+          break;
+
+        case "tool_result":
+          // Update the tool message with its result
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === event.callId
+                ? { ...m, content: event.result }
+                : m,
+            ),
+          );
+          break;
+
+        case "agent_start":
+          setIsAgentRunning(true);
+          break;
+
+        case "agent_end":
+          setIsAgentRunning(false);
+          break;
       }
     });
 
@@ -50,9 +93,9 @@ function App() {
   }, [agent]);
 
   const handleSend = (text: string) => {
-    if (isAgentRunning) return; // Don't allow input while agent is running
+    if (isAgentRunning) return;
 
-    agent.run(text).catch((err) => {
+    agent.run(text).catch((err: unknown) => {
       console.error("Agent error:", err);
       setIsAgentRunning(false);
     });
