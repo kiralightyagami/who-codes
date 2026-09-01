@@ -16,16 +16,14 @@ interface ChatItem {
  *
  * Props:
  * - `messages` — the array of messages to render
- * - `height` — available height for the scroll area
  *
  * Auto-scrolls to the bottom when messages change.
+ * Uses flexGrow={1} to fill available vertical space.
  */
 export const ChatMessages = ({
   messages,
-  height = 20,
 }: {
   messages: ChatItem[];
-  height?: number;
 }) => {
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -91,7 +89,6 @@ export const ChatMessages = ({
   return (
     <scrollbox
       ref={scrollRef}
-      height={height}
       flexGrow={1}
       width="100%"
       flexDirection="column"

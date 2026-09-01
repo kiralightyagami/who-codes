@@ -110,11 +110,19 @@ function App() {
       gap={2}
     >
       <Header />
-      <box width={"100%"} maxWidth={78} paddingX={2} flexGrow={1} flexDirection="column">
-        {/* Chat history (scrollable) */}
-        <ChatMessages messages={messages} height={20} />
-        {/* Input box at bottom */}
-        <Input onSubmit={handleSend} disabled={isAgentRunning} />
+      <box
+        width={"100%"}
+        maxWidth={78}
+        paddingX={2}
+        flexGrow={1}
+        flexDirection="column"
+      >
+        {/* Chat history (scrollable, fills remaining space) */}
+        <ChatMessages messages={messages} />
+        {/* Input box at bottom (fixed height) */}
+        <box flexShrink={0}>
+          <Input onSubmit={handleSend} disabled={isAgentRunning} />
+        </box>
       </box>
     </box>
   );
