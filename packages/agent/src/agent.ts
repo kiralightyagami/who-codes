@@ -94,7 +94,13 @@ export class Agent {
     };
     this.conversation.addMessage(userMsg);
 
-    await this._streamAndLoop();
+    try {
+      await this._streamAndLoop();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.conversation.emit({ type: "error", message: errorMsg });
+      this.conversation.emit({ type: "agent_end" });
+    }
   }
 
   /**

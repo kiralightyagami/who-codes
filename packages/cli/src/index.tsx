@@ -90,6 +90,19 @@ function App() {
         case "agent_end":
           setIsAgentRunning(false);
           break;
+
+        case "error":
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `error_${Date.now()}`,
+              role: "assistant",
+              content: `⚠ Error: ${event.message}`,
+              timestamp: Date.now(),
+            },
+          ]);
+          setIsAgentRunning(false);
+          break;
       }
     });
 
@@ -100,7 +113,17 @@ function App() {
     if (isAgentRunning) return;
 
     agent.run(text).catch((err: unknown) => {
-      console.error("Agent error:", err);
+      // Catch errors so the UI doesn't crash
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `error_${Date.now()}`,
+          role: "assistant",
+          content: `⚠ Error: ${errorMsg}`,
+          timestamp: Date.now(),
+        },
+      ]);
       setIsAgentRunning(false);
     });
   };
