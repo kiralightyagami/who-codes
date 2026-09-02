@@ -8,10 +8,14 @@ import { createLlmProvider } from "../../agent/src/llm/factory";
 import { Agent, tools } from "../../agent/src";
 import type { ChatMessage, ConversationEvent } from "../../agent/src";
 import { useState, useEffect, useRef } from "react";
+import path from "path";
+import { fileURLToPath } from "url";
 
 
-
-dotenv.config({ path: "../agent/.env" });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const envPath = path.join(__dirname, "../../agent/.env");
+dotenv.config({ path: envPath });
 
 const renderer = await createCliRenderer();
 
