@@ -32,6 +32,7 @@ function App() {
       provider,
       tools,
       systemPrompt: "You are WhoCodes, a minimal coding agent. Use tools when needed. Be concise.",
+      maxHistoryMessages: 20,
     });
   }
 

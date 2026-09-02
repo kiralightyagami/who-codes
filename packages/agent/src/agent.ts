@@ -13,6 +13,8 @@ export interface AgentOptions {
   systemPrompt?: string;
   /** Initial conversation (for restoring sessions). */
   initialMessages?: ChatMessage[];
+  /** Max messages to send to the LLM (truncated from the end). Default: 20. */
+  maxHistoryMessages?: number;
 }
 
 /**
@@ -28,6 +30,7 @@ export class Agent {
   private readonly tools: Tool[];
   private readonly toolMap: Map<string, Tool>;
   private readonly systemPrompt?: string;
+  private readonly maxHistoryMessages: number;
   /** Collects streaming tool calls until the LLM response ends. */
   private pendingToolCalls: Map<string, ToolCallInfo> = new Map();
 
@@ -36,6 +39,7 @@ export class Agent {
     this.provider = opts.provider;
     this.tools = opts.tools;
     this.systemPrompt = opts.systemPrompt;
+    this.maxHistoryMessages = opts.maxHistoryMessages ?? 20;
 
     // Build a quick lookup: tool name → Tool object
     this.toolMap = new Map();
@@ -51,10 +55,18 @@ export class Agent {
 
   /**
    * Convert our internal ChatMessage[] to the LlmMessage[] format
-   * expected by the provider.
+   * expected by the provider. Truncates old messages beyond
+   * maxHistoryMessages to avoid hitting token limits.
    */
   private toLlmMessages(): LlmMessage[] {
-    return this.conversation.messages.map((msg) => ({
+    // Keep the most recent N messages to stay within token limits
+    const msgs = this.conversation.messages;
+    const toSend =
+      msgs.length > this.maxHistoryMessages
+        ? msgs.slice(msgs.length - this.maxHistoryMessages)
+        : msgs;
+
+    return toSend.map((msg) => ({
       role: msg.role,
       content: msg.content,
       toolCallId: msg.toolName ? undefined : undefined,
