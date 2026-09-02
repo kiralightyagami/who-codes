@@ -145,7 +145,7 @@ function App() {
         flexDirection="column"
       >
         {/* Chat history (scrollable, fills remaining space) */}
-        <ChatMessages messages={messages} />
+        <ChatMessages messages={messages} isTyping={isAgentRunning} />
         {/* Input box at bottom (fixed height) */}
         <box flexShrink={0}>
           <Input onSubmit={handleSend} disabled={isAgentRunning} />
