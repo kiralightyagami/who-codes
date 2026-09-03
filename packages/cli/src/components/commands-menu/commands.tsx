@@ -5,6 +5,9 @@ export const COMMANDS: Command[] = [
     name: "new",
     description: "Start a new conversation",
     value: "/new",
+    action: (ctx) => {
+      ctx.clear();
+    },
   },
   {
     name: "quit",

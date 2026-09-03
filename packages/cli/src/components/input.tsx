@@ -16,9 +16,11 @@ export const INPUT_KEY_BINDINGS: KeyBinding[] = [
 
 export const Input = ({
   onSubmit,
+  onClear,
   disabled = false,
 }: {
   onSubmit: (text: string) => void;
+  onClear?: () => void;
   disabled?: boolean;
 }) => {
   const textareaRef = useRef<TextareaRenderable>(null);
@@ -65,12 +67,13 @@ export const Input = ({
       if (command.action) {
         command.action({
           exit: () => renderer.destroy(),
+          clear: onClear ?? (() => {}),
         });
       } else {
         textarea.insertText(command.value + " ");
       }
     },
-    [renderer],
+    [renderer, onClear],
   );
 
   const handleContentExecute = useCallback(

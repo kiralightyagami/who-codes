@@ -129,6 +129,11 @@ function App() {
     });
   };
 
+  const handleClear = () => {
+    agent.clear();
+    setMessages([]);
+  };
+
   return (
     <box
       alignItems="center"
@@ -149,7 +154,7 @@ function App() {
         <ChatMessages messages={messages} isTyping={isAgentRunning} />
         {/* Input box at bottom (fixed height) */}
         <box flexShrink={0}>
-          <Input onSubmit={handleSend} disabled={isAgentRunning} />
+          <Input onSubmit={handleSend} onClear={handleClear} disabled={isAgentRunning} />
         </box>
       </box>
     </box>
