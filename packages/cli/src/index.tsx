@@ -31,8 +31,7 @@ function App() {
     agentRef.current = new Agent({
       provider,
       tools,
-      systemPrompt: "You are WhoCodes, a minimal coding agent. Use tools when needed. Be concise.",
-      maxHistoryMessages: 20,
+      // systemPrompt defaults to getAgentLoopPrompt() in the Agent class
     });
   }
 

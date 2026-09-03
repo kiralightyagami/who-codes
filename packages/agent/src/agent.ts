@@ -2,6 +2,7 @@ import type { LlmProvider, LlmMessage } from "./llm/types";
 import type { Tool } from "./tools/types";
 import { Conversation, type ChatMessage, type ToolCallInfo } from "./conversation";
 import { getLlmTools } from "./tools/index";
+import { getAgentLoopPrompt } from "./prompts/agent-loop";
 
 /**
  * Options for creating an Agent.
@@ -9,7 +10,7 @@ import { getLlmTools } from "./tools/index";
 export interface AgentOptions {
   provider: LlmProvider;
   tools: Tool[];
-  /** System prompt / instructions for the model. */
+  /** System prompt / instructions for the model. Defaults to getAgentLoopPrompt(). */
   systemPrompt?: string;
   /** Initial conversation (for restoring sessions). */
   initialMessages?: ChatMessage[];
@@ -38,7 +39,7 @@ export class Agent {
     this.conversation = new Conversation();
     this.provider = opts.provider;
     this.tools = opts.tools;
-    this.systemPrompt = opts.systemPrompt;
+    this.systemPrompt = opts.systemPrompt ?? getAgentLoopPrompt();
     this.maxHistoryMessages = opts.maxHistoryMessages ?? 20;
 
     // Build a quick lookup: tool name → Tool object

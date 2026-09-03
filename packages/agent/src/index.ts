@@ -14,3 +14,9 @@ export type { LlmProvider, LlmMessage, LlmTool, LlmResponseChunk, ProviderOption
 
 export { tools, getLlmTools } from "./tools";
 export type { Tool } from "./tools";
+
+// Prompts
+export { SUMMARIZING_PROMPT } from "./prompts/summarizing";
+export { getAgentLoopPrompt } from "./prompts/agent-loop";
+export { memoryManager } from "./manager/memory.manager";
+export { projectRoot } from "./utils/tool.utils";
