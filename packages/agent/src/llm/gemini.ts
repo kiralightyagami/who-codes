@@ -34,9 +34,12 @@ function toGeminiTool(tool: LlmTool) {
 /**
  * Build the Gemini Content[] array from our internal message format.
  *
- * Our format has separate "assistant" (tool call) and "tool" (tool result)
- * messages. Gemini expects:
- *   - assistant → Content with role "model", parts containing functionCall
+ * Our format has:
+ *   - assistant messages with optional toolCalls (text + tool calls together)
+ *   - tool result messages (role "tool" with toolCallId linking to the call)
+ *
+ * Gemini expects:
+ *   - assistant → Content with role "model", parts containing text + functionCall
  *   - tool result → Content with role "user", parts containing functionResponse
  */
 function toGeminiContents(messages: LlmMessage[]): GeminiContent[] {
@@ -55,19 +58,31 @@ function toGeminiContents(messages: LlmMessage[]): GeminiContent[] {
         role: "user",
         parts: [{ functionResponse: funcResp }],
       });
-    } else if (msg.role === "assistant" && msg.toolCallId && msg.toolName) {
-      // Assistant tool-call message — present as model content with functionCall part.
+    } else if (
+      msg.role === "assistant" &&
+      msg.toolCalls &&
+      msg.toolCalls.length > 0
+    ) {
+      // Assistant message with tool calls — text + functionCall parts together
+      const parts: GeminiContent["parts"] = [];
+
+      if (msg.content) {
+        parts.push({ text: msg.content });
+      }
+
+      for (const tc of msg.toolCalls) {
+        parts.push({
+          functionCall: {
+            id: tc.id,
+            name: tc.name,
+            args: tc.args,
+          },
+        });
+      }
+
       contents.push({
         role: "model",
-        parts: [
-          {
-            functionCall: {
-              id: msg.toolCallId,
-              name: msg.toolName,
-              args: msg.content ? JSON.parse(msg.content) : {},
-            },
-          },
-        ],
+        parts,
       });
     } else {
       // Regular user/assistant text message

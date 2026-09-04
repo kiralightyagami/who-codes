@@ -65,27 +65,32 @@ export class OpenAIProvider implements LlmProvider {
 
     for (const msg of messages) {
       if (msg.role === "tool") {
+        // Tool result message
         result.push({
           role: "tool",
           content: msg.content,
           tool_call_id: msg.toolCallId!,
         });
-      } else if (msg.role === "assistant" && msg.toolName && msg.toolCallId) {
-        const argsStr = msg.content && msg.content.startsWith("__tool_call__:")
-          ? msg.content.slice("__tool_call__:".length)
-          : msg.content ?? "{}";
+      } else if (
+        msg.role === "assistant" &&
+        msg.toolCalls &&
+        msg.toolCalls.length > 0
+      ) {
+        // Assistant message with tool calls — content is the text (may be empty)
         result.push({
           role: "assistant",
-          content: null,
-          tool_calls: [
-            {
-              id: msg.toolCallId,
-              type: "function",
-              function: { name: msg.toolName, arguments: argsStr },
+          content: msg.content || null,
+          tool_calls: msg.toolCalls.map((tc) => ({
+            id: tc.id,
+            type: "function",
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.args),
             },
-          ],
+          })),
         });
       } else {
+        // Regular user/assistant message
         result.push({
           role: msg.role === "assistant" ? "assistant" : msg.role,
           content: msg.content,

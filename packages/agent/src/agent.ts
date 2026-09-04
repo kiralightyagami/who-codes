@@ -30,7 +30,7 @@ export class Agent {
   private readonly provider: LlmProvider;
   private readonly tools: Tool[];
   private readonly toolMap: Map<string, Tool>;
-  private readonly systemPrompt?: string;
+  private readonly systemPrompt: string;
   private readonly maxHistoryMessages: number;
   /** Collects streaming tool calls until the LLM response ends. */
   private pendingToolCalls: Map<string, ToolCallInfo> = new Map();
@@ -58,9 +58,11 @@ export class Agent {
    * Convert our internal ChatMessage[] to the LlmMessage[] format
    * expected by the provider. Truncates old messages beyond
    * maxHistoryMessages to avoid hitting token limits.
+   *
+   * We pass content through as-is — the provider handles the
+   * "__tool_call__:" prefix convention in toOaiMessages()/toGeminiContents().
    */
   private toLlmMessages(): LlmMessage[] {
-    // Keep the most recent N messages to stay within token limits
     const msgs = this.conversation.messages;
     const toSend =
       msgs.length > this.maxHistoryMessages
@@ -70,7 +72,8 @@ export class Agent {
     return toSend.map((msg) => ({
       role: msg.role,
       content: msg.content,
-      toolCallId: msg.toolName ? undefined : undefined,
+      toolCalls: msg.toolCalls,
+      toolCallId: msg.toolCallId,
       toolName: msg.toolName,
     }));
   }
@@ -88,13 +91,14 @@ export class Agent {
    * Send a user message and start the agent loop.
    *
    * Emits events to the Conversation:
-   *   - "agent_start"       (once, at the beginning)
-   *   - "message_added"     (for the user message)
-   *   - "text_delta"        (streaming text from the LLM)
-   *   - "tool_call_started" (when the LLM requests a tool)
-   *   - "tool_result"       (after a tool finishes )
-   *   - "message_added"     (assistant full message)
-   *   - "agent_end"         (once, at the end)
+   *   - "agent_start"
+   *   - "message_added" (user message)
+   *   - "text_delta" (streaming text)
+   *   - "tool_call_started"
+   *   - "tool_result"
+   *   - "message_added" (assistant response)
+   *   - "error" (on failure)
+   *   - "agent_end"
    */
   async run(userInput: string): Promise<void> {
     this.conversation.emit({ type: "agent_start" });
@@ -123,17 +127,22 @@ export class Agent {
     this.pendingToolCalls.clear();
 
     const messages = this.toLlmMessages();
-    const tools = this.toLlmTools();
+    const llmTools = this.toLlmTools();
 
+    // Create a placeholder assistant message for this turn's response.
+    // Tool calls will be stored on this same message (not separate messages)
+    // to match OpenAI/Gemini format where a single assistant message
+    // can contain both text and tool_calls.
     const assistantMsg: ChatMessage = {
       id: this.conversation.nextId(),
       role: "assistant",
       content: "",
+      toolCalls: [],
       timestamp: Date.now(),
     };
     this.conversation.addMessage(assistantMsg);
 
-    for await (const chunk of this.provider.chat(messages, tools)) {
+    for await (const chunk of this.provider.chat(messages, llmTools)) {
       if (chunk.type === "text") {
         assistantMsg.content += chunk.text;
         this.conversation.emit({ type: "text_delta", text: chunk.text });
@@ -145,6 +154,17 @@ export class Agent {
           args: chunk.args,
         };
         this.pendingToolCalls.set(chunk.id, call);
+
+        // Store the tool call on the assistant message (same message as the text)
+        if (!assistantMsg.toolCalls) {
+          assistantMsg.toolCalls = [];
+        }
+        assistantMsg.toolCalls.push({
+          id: call.id,
+          name: call.name,
+          args: call.args,
+        });
+
         this.conversation.emit({ type: "tool_call_started", call });
       }
     }
@@ -159,32 +179,20 @@ export class Agent {
   /**
    * Execute all pending tool calls, add their results to conversation
    * history, then loop back to _streamAndLoop() to continue the turn.
-   *
-   * This is the core of the agent loop:
-   *   1. Find each tool in the toolMap
-   *   2. Execute it with the LLM-provided args
-   *   3. Emit a tool_result event
-   *   4. Add the result as a tool message in history
-   *   5. Call _streamAndLoop() again — the LLM gets the results and responds
    */
   private async _executeAndLoop(): Promise<void> {
     for (const call of this.pendingToolCalls.values()) {
       const tool = this.toolMap.get(call.name);
 
       if (!tool) {
-        // Tool not found — tell the LLM it made an error
-        const result = `Error: Unknown tool "${call.name}". Available tools: ${[...this.toolMap.keys()].join(", ")}`;
-        this.conversation.emit({
-          type: "tool_result",
-          callId: call.id,
-          name: call.name,
-          result,
-        });
+        const result = `Error: Unknown tool "${call.name}". Available: ${[...this.toolMap.keys()].join(", ")}`;
+        this.conversation.emit({ type: "tool_result", callId: call.id, name: call.name, result });
         this.conversation.addMessage({
           id: this.conversation.nextId(),
           role: "tool",
           content: result,
           toolName: call.name,
+          toolCallId: call.id,
           timestamp: Date.now(),
         });
         continue;
@@ -192,49 +200,31 @@ export class Agent {
 
       try {
         const result = await tool.execute(call.args);
-
-        this.conversation.emit({
-          type: "tool_result",
-          callId: call.id,
-          name: call.name,
-          result,
-        });
-
-        // Store args so the provider can reconstruct the assistant tool call
-        const argsJson = JSON.stringify(call.args);
-        this.conversation.addMessage({
-          id: call.id,  // use tool call id as message id for linking
-          role: "tool",
-          content: result,
-          toolName: call.name,
-          timestamp: Date.now(),
-        });
-
-        // Also need to keep the assistant's tool-call message in history
-        // so the provider sees the conversation correctly
-        // (We store the args on the message content using a prefix)
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        this.conversation.emit({
-          type: "tool_result",
-          callId: call.id,
-          name: call.name,
-          result: `Error executing tool: ${errorMsg}`,
-        });
+        this.conversation.emit({ type: "tool_result", callId: call.id, name: call.name, result });
         this.conversation.addMessage({
           id: this.conversation.nextId(),
           role: "tool",
-          content: `Error executing tool: ${errorMsg}`,
+          content: result,
           toolName: call.name,
+          toolCallId: call.id,
+          timestamp: Date.now(),
+        });
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        const result = `Error: ${errorMsg}`;
+        this.conversation.emit({ type: "tool_result", callId: call.id, name: call.name, result });
+        this.conversation.addMessage({
+          id: this.conversation.nextId(),
+          role: "tool",
+          content: result,
+          toolName: call.name,
+          toolCallId: call.id,
           timestamp: Date.now(),
         });
       }
     }
 
-    // Clear pending calls before re-streaming
     this.pendingToolCalls.clear();
-
-    // Loop back — the LLM sees the tool results and responds again
     await this._streamAndLoop();
   }
 

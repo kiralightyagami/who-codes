@@ -7,9 +7,11 @@
 export interface LlmMessage {
   role: "user" | "assistant" | "tool";
   content: string;
-  /** For tool calls and tool results — identifies which call this belongs to. */
+  /** For assistant messages — the tool calls this message contains. */
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  /** For tool results — identifies which call this matches. */
   toolCallId?: string;
-  /** The name of the tool (for assistant tool_call messages and tool result messages). */
+  /** The name of the tool (for tool result messages). */
   toolName?: string;
 }
 
