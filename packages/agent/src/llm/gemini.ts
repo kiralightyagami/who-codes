@@ -54,9 +54,16 @@ function toGeminiContents(messages: LlmMessage[]): GeminiContent[] {
       funcResp.name = msg.toolName!;
       funcResp.response = { output: msg.content };
 
+      const part: GeminiContent["parts"][0] = { functionResponse: funcResp };
+
+      // Include thoughtSignature if available (required by Gemini for tool calls)
+      if (msg.thoughtSignature) {
+        (part as any).thoughtSignature = msg.thoughtSignature;
+      }
+
       contents.push({
         role: "user",
-        parts: [{ functionResponse: funcResp }],
+        parts: [part],
       });
     } else if (
       msg.role === "assistant" &&
@@ -71,13 +78,17 @@ function toGeminiContents(messages: LlmMessage[]): GeminiContent[] {
       }
 
       for (const tc of msg.toolCalls) {
-        parts.push({
+        const fcPart: GeminiContent["parts"][0] = {
           functionCall: {
             id: tc.id,
             name: tc.name,
             args: tc.args,
           },
-        });
+        };
+        if (tc.thoughtSignature) {
+          (fcPart as any).thoughtSignature = tc.thoughtSignature;
+        }
+        parts.push(fcPart);
       }
 
       contents.push({
@@ -146,20 +157,31 @@ export class GeminiProvider implements LlmProvider {
         yield { type: "text", text: chunk.text };
       }
 
-      // Function calls
-      const fcs = chunk.functionCalls;
-      if (fcs && fcs.length > 0) {
-        for (const fc of fcs) {
-          const id = fc.id ?? `${fc.name}-${Date.now()}`;
-          if (seenCallIds.has(id)) continue;
+      // Function calls — need to access raw Parts to get thoughtSignature
+      const candidates = chunk.candidates ?? [];
+      for (const candidate of candidates) {
+        const content = candidate.content;
+        if (!content || !content.parts) continue;
+        for (const part of content.parts) {
+          if (part.functionCall) {
+            const fc = part.functionCall;
+            const id = fc.id ?? `${fc.name}-${Date.now()}`;
+            if (seenCallIds.has(id)) continue;
 
-          const args: Record<string, unknown> = {};
-          if (fc.args) {
-            Object.assign(args, fc.args);
+            const args: Record<string, unknown> = {};
+            if (fc.args) {
+              Object.assign(args, fc.args);
+            }
+
+            seenCallIds.add(id);
+            yield {
+              type: "tool_call",
+              id,
+              name: fc.name!,
+              args,
+              thoughtSignature: part.thoughtSignature,
+            };
           }
-
-          seenCallIds.add(id);
-          yield { type: "tool_call", id, name: fc.name!, args };
         }
       }
     }

@@ -75,6 +75,7 @@ export class Agent {
       toolCalls: msg.toolCalls,
       toolCallId: msg.toolCallId,
       toolName: msg.toolName,
+      thoughtSignature: msg.thoughtSignature,
     }));
   }
 
@@ -152,6 +153,7 @@ export class Agent {
           id: chunk.id,
           name: chunk.name,
           args: chunk.args,
+          thoughtSignature: chunk.thoughtSignature,
         };
         this.pendingToolCalls.set(chunk.id, call);
 
@@ -163,6 +165,7 @@ export class Agent {
           id: call.id,
           name: call.name,
           args: call.args,
+          thoughtSignature: call.thoughtSignature,
         });
 
         this.conversation.emit({ type: "tool_call_started", call });
@@ -193,6 +196,7 @@ export class Agent {
           content: result,
           toolName: call.name,
           toolCallId: call.id,
+          thoughtSignature: call.thoughtSignature,
           timestamp: Date.now(),
         });
         continue;
@@ -207,6 +211,7 @@ export class Agent {
           content: result,
           toolName: call.name,
           toolCallId: call.id,
+          thoughtSignature: call.thoughtSignature,
           timestamp: Date.now(),
         });
       } catch (err) {
@@ -219,6 +224,7 @@ export class Agent {
           content: result,
           toolName: call.name,
           toolCallId: call.id,
+          thoughtSignature: call.thoughtSignature,
           timestamp: Date.now(),
         });
       }

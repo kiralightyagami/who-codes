@@ -17,7 +17,9 @@ export interface ChatMessage {
   /** Links assistant tool calls to their results. */
   toolCallId?: string;
   /** For assistant messages — the tool calls this message contains. */
-  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }>;
+  /** Provider-specific signature echoed back (e.g. Gemini thought_signature). */
+  thoughtSignature?: string;
   /** Timestamp for ordering/display. */
   timestamp: number;
 }
@@ -26,6 +28,8 @@ export interface ToolCallInfo {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /** Provider-specific signature for matching (e.g. Gemini thought_signature). */
+  thoughtSignature?: string;
 }
 
 /**

@@ -8,11 +8,13 @@ export interface LlmMessage {
   role: "user" | "assistant" | "tool";
   content: string;
   /** For assistant messages — the tool calls this message contains. */
-  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string }>;
   /** For tool results — identifies which call this matches. */
   toolCallId?: string;
   /** The name of the tool (for tool result messages). */
   toolName?: string;
+  /** Provider-specific signature echoed back (e.g. Gemini thought_signature). */
+  thoughtSignature?: string;
 }
 
 /**
@@ -30,7 +32,7 @@ export interface LlmTool {
  */
 export type LlmResponseChunk =
   | { type: "text"; text: string }
-  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown> };
+  | { type: "tool_call"; id: string; name: string; args: Record<string, unknown>; thoughtSignature?: string };
 
 /**
  * The minimal interface every provider must implement.
