@@ -116,6 +116,7 @@ export class OpenAIProvider implements LlmProvider {
   async *chat(
     messages: LlmMessage[],
     tools: LlmTool[],
+    toolChoice: "auto" | "none" = "auto",
   ): AsyncGenerator<LlmResponseChunk> {
     const body: Record<string, unknown> = {
       model: this.model,
@@ -127,7 +128,7 @@ export class OpenAIProvider implements LlmProvider {
 
     if (tools.length > 0) {
       body.tools = this.toOaiTools(tools);
-      body.tool_choice = "auto";
+      body.tool_choice = toolChoice;
     }
 
     const res = await fetch(`${this.baseUrl}/chat/completions`, {

@@ -5,6 +5,18 @@ import { getLlmTools } from "./tools/index";
 import { getAgentLoopPrompt } from "./prompts/agent-loop";
 
 /**
+ * Check if a user input is a simple greeting that shouldn't trigger tool calls.
+ * Examples: "hi", "hello", "hey", "how are you", "good morning"
+ */
+const GREETING_RE = /^(hi|hello|hey|howdy|good ?(morning|afternoon|evening|day)|how are you|g?day)\b/i;
+
+function isSimpleGreeting(text: string): boolean {
+  const trimmed = text.trim();
+  // Short messages that are just greetings
+  return trimmed.length <= 30 && GREETING_RE.test(trimmed);
+}
+
+/**
  * Options for creating an Agent.
  */
 export interface AgentOptions {
@@ -34,6 +46,8 @@ export class Agent {
   private readonly maxHistoryMessages: number;
   /** Collects streaming tool calls until the LLM response ends. */
   private pendingToolCalls: Map<string, ToolCallInfo> = new Map();
+  /** When true, suppresses tool calls for this turn (e.g. simple greetings). */
+  private suppressToolsThisTurn: boolean = false;
 
   constructor(opts: AgentOptions) {
     this.conversation = new Conversation();
@@ -59,8 +73,8 @@ export class Agent {
    * expected by the provider. Truncates old messages beyond
    * maxHistoryMessages to avoid hitting token limits.
    *
-   * We pass content through as-is — the provider handles the
-   * "__tool_call__:" prefix convention in toOaiMessages()/toGeminiContents().
+   * We pass content and toolCalls through as-is — the provider
+   * handles the conversion to its native format.
    */
   private toLlmMessages(): LlmMessage[] {
     const msgs = this.conversation.messages;
@@ -112,6 +126,9 @@ export class Agent {
     };
     this.conversation.addMessage(userMsg);
 
+    // Detect simple greetings to suppress unnecessary tool calls
+    this.suppressToolsThisTurn = isSimpleGreeting(userInput);
+
     try {
       await this._streamAndLoop();
     } catch (err) {
@@ -143,7 +160,10 @@ export class Agent {
     };
     this.conversation.addMessage(assistantMsg);
 
-    for await (const chunk of this.provider.chat(messages, llmTools)) {
+    const toolChoice = this.suppressToolsThisTurn ? "none" as const : "auto" as const;
+    this.suppressToolsThisTurn = false; // reset for next turn
+
+    for await (const chunk of this.provider.chat(messages, llmTools, toolChoice)) {
       if (chunk.type === "text") {
         assistantMsg.content += chunk.text;
         this.conversation.emit({ type: "text_delta", text: chunk.text });

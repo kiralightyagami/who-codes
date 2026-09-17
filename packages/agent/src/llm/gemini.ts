@@ -128,6 +128,7 @@ export class GeminiProvider implements LlmProvider {
   async *chat(
     messages: LlmMessage[],
     tools: LlmTool[],
+    toolChoice: "auto" | "none" = "auto",
   ): AsyncGenerator<LlmResponseChunk> {
     const config: Record<string, unknown> = {};
 
@@ -137,6 +138,9 @@ export class GeminiProvider implements LlmProvider {
 
     if (tools.length > 0) {
       config.tools = [{ functionDeclarations: tools.map(toGeminiTool) }];
+      if (toolChoice === "none") {
+        config.toolConfig = { functionCallingConfig: { mode: "NONE" } };
+      }
     }
 
     const geminiContents = toGeminiContents(messages);
@@ -148,8 +152,11 @@ export class GeminiProvider implements LlmProvider {
     });
 
     // Track which function calls we've already yielded so we don't
-    // double-emit when args are streamed in partial chunks.
+    // double-emit when the model streams the same call in multiple chunks.
     const seenCallIds = new Set<string>();
+    // Also deduplicate by name+args for cases where the model generates
+    // the same call with different IDs across chunks.
+    const seenCallKeys = new Set<string>();
 
     for await (const chunk of stream) {
       // Text deltas
@@ -172,8 +179,11 @@ export class GeminiProvider implements LlmProvider {
             if (fc.args) {
               Object.assign(args, fc.args);
             }
+            const callKey = `${fc.name}:${JSON.stringify(args)}`;
+            if (seenCallKeys.has(callKey)) continue;
 
             seenCallIds.add(id);
+            seenCallKeys.add(callKey);
             yield {
               type: "tool_call",
               id,

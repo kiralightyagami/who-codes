@@ -44,10 +44,14 @@ export interface LlmProvider {
   /**
    * Send the full message history + tool list to the LLM and stream back
    * text deltas and tool calls.
+   *
+   * @param toolChoice - "none" to suppress all tool calls (for greetings),
+   *                     "auto" (default) to let the model decide.
    */
   chat(
     messages: LlmMessage[],
     tools: LlmTool[],
+    toolChoice?: "auto" | "none",
   ): AsyncGenerator<LlmResponseChunk>;
 }
 
